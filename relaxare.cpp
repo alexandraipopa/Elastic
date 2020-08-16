@@ -2,76 +2,79 @@
 #include <fstream>
 #include <cmath>
 #include <stdio.h>
-#include <stdlib.h>
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_odeiv2.h>
-#include <time.h>
-#include <math.h>
+#include <algorithm>
+#include <random>
 
 using namespace std;
 
-#define DIM 37
+#define DIM 2791
+
+ifstream fin("hexagon2791.dat");
+ofstream fout("nHS.txt");
+ofstream fout1("1000MCS.txt");
+ofstream fout2("2000MCS.txt");
+ofstream fout3("3000MCS.txt");
+ofstream fout4("4000MCS.txt");
+ofstream fout5("5000MCS.txt");
+ofstream fout6("6000MCS.txt");
+ofstream fout7("7000MCS.txt");
+ofstream fout8("8000MCS.txt");
+ofstream fout9("9000MCS.txt");
+ofstream fout10("10000MCS.txt");
 
 
-ifstream fin("hexagon37.dat");
-ofstream fout1("nHS.txt");
-ofstream fout2("configuratie_initiala.txt");
+
+
 //adaug apoi fisiere pentru configuratii intermediare
 
 
 int vecin[DIM][6];
 double sol[4 * DIM];
 double prev_pos[4 * DIM];
-
 double r[DIM];
-bool verificat[DIM];
-
-double x, y;
 
 double nHS;
 int timp;
-int verif;
-
 
 void reading();
+void configuratii_intermediare();
+
 int func(double t, const double sol[], double f[], void* params);
 int jac(double t, const double y[], double* dfdy, double dfdt[], void* params);
 bool ajuns_la_echilibru();
-double random_number();
-
 void sistem_in_echilibru();
 
-void clearverificate();
-
-double calculnHS();
 double probabilityHS_LS(int dot);
 double probabilityLS_HS(int dot);
 
 double subunitar;
 
 double t = 0.0, t1 = 100.0;
-bool ech = 0;
 int count = 0;
 
-double tau = 2;
+double tau = 400;
 double D=1000;
-double dS=20;
+double dS=7;
 double T=50;
 double Ea = 400;
 double L = 0.6;
 double mu = 10;
 double k_elastic = 1450;
+int total_time = 1000000;
 
-int total_time = 100000;
+int index[DIM];
 
 int main(void)
 {
-	srand(time(0));
-
-	int dot=0;
+	std::random_device device;
+	std::mt19937 generator(device());
+	std::uniform_real_distribution <double> distribution(0.0, 1.0);
+	
+	int part;
 	double P;
-
 
 	reading(); 
 
@@ -79,62 +82,135 @@ int main(void)
 	{
 		sol[4 * i] *= 1.04;
 		sol[4 * i + 2] *= 1.04;
+		r[i] = 0.22;
 	}
 
-	for (int i = 0; i < DIM; i++)
-	{
-		fout2 << sol[4 * i] << ' ' << sol[4 * i + 2] << '\n';
-	}
+	nHS = DIM;
 
 	for (timp = 1; timp <= total_time; timp++)
 	{
-		nHS = calculnHS();
-		fout1 << timp << ' ' << nHS << '\n';
-		cout << timp << ' ' << nHS << '\n';
+		fout << timp << ' ' << (double) nHS / DIM << '\n';
+		cout << timp << ' ' << (double) nHS / DIM << '\n';
 		if (nHS == 0)
 			exit(0);
-		while (verif < DIM)
-		{
-			dot = rand() % DIM;
-			if (verificat[dot] == 1)
-				continue;
-			verif++;
-			verificat[dot] = 1;
-			subunitar = random_number();
 
-			if (r[dot] == 0.2)
+		std::random_shuffle(std::begin(index), std::end(index));
+
+		for (int i = 0; i < DIM; i++)
+		{
+			part = index[i];
+			subunitar = distribution(generator);
+			if (r[part] < 0.21)
 			{
-				P = probabilityLS_HS(dot);
+				P = probabilityLS_HS(part);
 				//cout << P << '\n';
 
 				if (subunitar < P)
 				{
-					r[dot] = 0.22;
+					r[part] = 0.22;
+					nHS ++;
 				}
 			}
 			else
 			{
-				P = probabilityHS_LS(dot);
+				P = probabilityHS_LS(part);
 				//cout << P << '\n';
 
 				if (subunitar < P)
 				{
-					r[dot] = 0.2;
+					r[part] = 0.2;
+					nHS --;
 				}
 			}
 		}
 		sistem_in_echilibru();
-		clearverificate();
+		configuratii_intermediare();
 	}
-	sistem_in_echilibru();
 
 	fin.close();
+	fout.close();
 	return 0;
+}
+
+void configuratii_intermediare()
+{
+	switch (timp)
+	{
+	case 1000: 
+		for (int i = 0; i < DIM; i++)
+		{
+			fout1 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout1.close();
+		break;
+	case 2000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout2 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout2.close();
+		break;
+	case 3000:
+		for (int i=0; i<DIM; i++)
+		{
+			fout3 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout3.close();
+		break;
+	case 4000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout4 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout4.close();
+		break;
+	case 5000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout5 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout5.close();
+		break;
+	case 6000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout6 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout6.close();
+		break;
+	case 7000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout7 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout7.close();
+		break;
+	case 8000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout8 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout8.close();
+		break;
+	case 9000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout9 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout9.close();
+		break;
+	case 10000:
+		for (int i = 0; i < DIM; i++)
+		{
+			fout10 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i] << '\n';
+		}
+		fout10.close();
+		break;
+	}
 }
 
 double probabilityHS_LS(int dot)
 {
-	double P=0;
 	double sum_delta=0;
 	int neigh;
 	int part = 4 * dot;
@@ -148,18 +224,14 @@ double probabilityHS_LS(int dot)
 		neigh = vecin[dot][j] * 4;
 		radical = sqrt((sol[neigh] - sol[part]) * (sol[neigh] - sol[part]) + (sol[neigh + 2] - sol[part + 2]) * (sol[neigh + 2] - sol[part + 2]));
 		elongation = radical - r[dot] - r[vecin[dot][j]] - L;
-		if (radical == 1.04 && r[vecin[dot][j]] == 0.22)
-			elongation = 0;
 		sum_delta+= elongation;
 	}
 
-	P = 1 / tau * exp((D - T * dS) / (2 * T))*exp(-((Ea + k_elastic * sum_delta) / T));
-	return P;
+	return 1 / tau * exp((D - T * dS) / (2 * T))*exp(-((Ea + k_elastic * sum_delta) / T));
 }
 
 double probabilityLS_HS(int dot)
 {
-	double P = 0;
 	double sum_delta = 0;
 	int neigh;
 	int part = 4 * dot;
@@ -175,8 +247,7 @@ double probabilityLS_HS(int dot)
 		sum_delta += elongation;
 	}
 
-	P = 1 / tau * exp(-((D - T * dS) / (2 * T)))*exp(-((Ea - k_elastic * sum_delta) / (T)));
-	return P;
+	return 1 / tau * exp(-((D - T * dS) / (2 * T)))*exp(-((Ea - k_elastic * sum_delta) / (T)));
 }
 
 void reading()
@@ -191,41 +262,8 @@ void reading()
 		}
 		sol[4 * i + 1] = 0;
 		sol[4 * i + 3] = 0;
-		r[i] = 0.22;
+		index[i] = i;
 	}
-}
-
-double calculnHS()
-{
-	double nHS = 0;
-	for (int i = 0; i < DIM; i++)
-		if (r[i]==0.22)
-			nHS += 1;
-	nHS = (double)nHS / DIM;
-	return nHS;
-}
-
-double random_number()
-{
-	int a, b;
-	double rez=0;
-	a = rand();
-	b = rand();
-	if (a < b)
-	{
-		rez = (double)a / b;
-	}
-	else
-		rez = (double)b / a;
-	return rez;
-}
-
-void clearverificate()
-{
-	int i;
-	verif = 0;
-	for (i = 0; i < DIM; i++)
-		verificat [i] = 0;
 }
 
 bool ajuns_la_echilibru()
@@ -244,6 +282,7 @@ bool ajuns_la_echilibru()
 
 void sistem_in_echilibru()
 {
+	bool ech = 0;
 	gsl_odeiv2_system sys = { func, jac, 4 * DIM, &mu };
 	gsl_odeiv2_driver* d = gsl_odeiv2_driver_alloc_y_new(&sys, gsl_odeiv2_step_rk8pd, 1e-6, 1e-6, 0.0);
 	int count = 0;
@@ -255,7 +294,6 @@ void sistem_in_echilibru()
 			prev_pos[4 * j + 2] = sol[4 * j + 2];
 		}
 		count++;
-		cout << count << '\n';
 		double ti = count * t1 / 100.0;
 		int status = gsl_odeiv2_driver_apply(d, &t, ti, sol);
 		if (status != GSL_SUCCESS)
