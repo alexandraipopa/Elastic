@@ -356,10 +356,8 @@ int func(double t, const double sol[], double f[], void* params)
 		f[part + 4] = sol[part + 5];
 		
 		//Nu am reusit sa introduc un moment de inertie pentru rotatie
-    
 		f[part + 5] = Mom[i] - damping.rotatie * sol[part + 5];
 	}
-
 	return GSL_SUCCESS;
 }
 
