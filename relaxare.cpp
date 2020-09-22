@@ -33,8 +33,8 @@ double T = 50;
 double Ea = 400;
 double L = 0.6;
 double mu = 10;
-double kappa = 1450;
-double k_elastic = 5;
+double kappa = 5;
+double k_elastic = 1450;
 
 int index[DIM];
 
@@ -53,7 +53,7 @@ int main(void)
 
 
 	char cale_in[100] = "D:\\Simulari\\Spin\\Elastic\\Hexagoane";
-	char cale_out[150] = "D:\\Simulari\\Spin\\Elastic\\Rezultate\\Relaxare\\hexagon2791";
+	char cale_out[150] = "D:\\Simulari\\Spin\\Elastic\\Rezultate\\Relaxare\\hexagon2791\\kappa_5";
 
 	char fisier_in[200], fisier_out1[300], fisier_out2[300];
 
@@ -91,7 +91,7 @@ int main(void)
 	{
 		fout1 << timp << ' ' << nHS / DIM << '\n';
 		cout << timp << ' ' << nHS / DIM << '\n';
-		if (nHS == 0)
+		if (nHS < 0.002)
 			exit(0);
 
 		std::random_shuffle(std::begin(index), std::end(index));
@@ -124,9 +124,9 @@ int main(void)
 			}
 		}
 		sistem_in_echilibru();
-		if (!(timp % 500))
+		if (double (nHS/DIM) < 0.7 && double (nHS/DIM)>0.6 )
 		{
-			sprintf(fisier_out2, "%s\\hexagon%06d_timp%06d_nHS%f.dat", cale_out, DIM, timp, nHS / DIM);
+			sprintf(fisier_out2, "%s\\hexagon%d_timp%d_nHS%f.dat", cale_out, DIM, timp, nHS / DIM);
 			ofstream fout2(fisier_out2);
 			for (int i = 0; i < DIM; i++)
 			{
@@ -157,7 +157,7 @@ double probabilityHS_LS(int dot)
 		sum_delta += elongation;
 	}
 
-	return 1 / tau * exp((D - T * dS) / (2 * T))*exp(-((Ea + kappa * sum_delta) / T));
+	return 1 / tau * exp((D - T * dS) / (2 * T))*exp(-((Ea + kappa * k_elastic * sum_delta) / T));
 }
 
 double probabilityLS_HS(int dot)
@@ -177,7 +177,7 @@ double probabilityLS_HS(int dot)
 		sum_delta += elongation;
 	}
 
-	return 1 / tau * exp(-((D - T * dS) / (2 * T)))*exp(-((Ea - kappa * sum_delta) / (T)));
+	return 1 / tau * exp(-((D - T * dS) / (2 * T)))*exp(-((Ea - k_elastic * kappa * sum_delta) / (T)));
 }
 
 bool ajuns_la_echilibru()
@@ -249,7 +249,7 @@ int func(double t, const double sol[], double f[], void* params)
 
 		f[part] = sol[part + 1];
 		f[part + 1] = Fex - mu * sol[part + 1];
-		f[part + 2] = sol[4 * i + 3];
+		f[part + 2] = sol[part + 3];
 		f[part + 3] = Fey - mu * sol[part + 3];
 	}
 
