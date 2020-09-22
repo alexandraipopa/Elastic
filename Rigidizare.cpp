@@ -11,7 +11,7 @@
 
 using namespace std;
 
-#define DIM 19
+#define DIM 2791
 struct vec
 {
 	int index;
@@ -42,28 +42,28 @@ void anchors(int dot);
 
 int func(double t, const double sol[], double f[], void* params);
 int jac(double t, const double y[], double* dfdy, double dfdt[], void* params);
+
 void sistem_in_echilibru();
 bool ajuns_la_echilibru();
 
-double tau = 400;
-double D = 1000;
-double dS = 7;
-double T = 50;
-double Ea = 400;
-double L = 0.6;
+const double tau = 80;
+const double D = 1000;
+const double dS = 7;
+const double T = 50;
+const double Ea = 400;
+const double L = 0.6;
 
-double kappa = 1000;
-double k_elastic = 10;
+const double kappa = 10;
+const double k_elastic = 1450;
+const double rigid_translatie = 1;
+const double rigid_rotatie = 1;
 
-double mom_inertie;
-
-const double rigid_translatie = 0;
-const double rigid_rotatie = 10;
 const double Pi = 3.1415926535897932384626433832795;
 const double sinPi3 = sin(Pi / 3.0);
 const double cosPi3 = cos(Pi / 3.0);
 const double sinPi6 = sin(Pi / 6.0);
 const double cosPi6 = cos(Pi / 6.0);
+
 int index[DIM]; //pentru shuffle
 
 double x_minim;
@@ -73,14 +73,14 @@ double prev_x, prev_y, prev_y2;
 int main(void)
 {
 	damping.translatie = 10;
-	damping.rotatie = 0;
+	damping.rotatie = 1;
 	std::random_device device;
 	std::mt19937 generator(device());
 	std::uniform_real_distribution <double> distribution(0.0, 1.0);
 
 	char cale_in[100] = "D:\\Simulari\\Spin\\Rigidizare\\Hexagoane";
-	char cale_out[150] = "D:\\Simulari\\Spin\\Rigidizare\\Rezultate\\Ech_mecanic\\Hexagon 19";
-	char fisier_out[300], fisier_in[200];
+	char cale_out[150] = "D:\\Simulari\\Spin\\Rigidizare\\Rezultate\\Echilibru mecanic\\Hexagon 2791";
+	char fisier_in[200];
 
 	sprintf(fisier_in, "%s\\hexagon%d.dat", cale_in, DIM);
 
@@ -89,7 +89,6 @@ int main(void)
 	{
 		fin >> sol[6 * i] >> sol[6 * i + 2];
 		r[i] = 0.2;
-		update_anch_init_pos(i);
 		for (int j = 0; j < 6; j++)
 		{
 			fin >> vecin[i][j].index;
@@ -100,6 +99,7 @@ int main(void)
 		sol[6 * i + 3] = 0;
 		sol[6 * i + 4] = 0; //theta initial este 0
 		sol[6 * i + 5] = 0;
+		index[i] = i;
 	}
 	fin.close();
 	for (int i = 0; i < DIM; i++)
@@ -111,22 +111,22 @@ int main(void)
 	prev_y = sol[6 * central + 2];
 	for (int i = 0; i < DIM; i++)
 	{
-		if (abs(sol[6*i+2]-prev_y)<0.01&&i!=central)
+		if (abs(sol[6 * i + 2] - prev_y) < 0.01&&i != central)
 			molec_2 = i;
 	}
 	tip_vecini();
 
-	//MOLECULELE DINTR-O PARTE A HEXAGONULUI SE MODIFICA
+
 	for (int i = 0; i < DIM; i++)
 	{
-		if (sol[6 * i] < -0.85)
-		{
+		if (sol[6 * i] < -1.0)
 			r[i] = 0.22;
-			update_anch_init_pos(i);
-		}
 	}
+	sistem_in_echilibru();
+}
 
-	// ECHILIBRUL MECANIC
+void sistem_in_echilibru()
+{
 	int count = 0;
 	double t = 0.0, t1 = 100.0;
 	gsl_odeiv2_system sys = { func, jac, 6 * DIM, &damping };
@@ -145,23 +145,103 @@ int main(void)
 		int status = gsl_odeiv2_driver_apply(d, &t, ti, sol);
 		if (status != GSL_SUCCESS)
 			printf("error, return value=%d\n", status);
-		//le fixez manual: 
-		/*sol[6 * central] = prev_x;
+		sol[6 * central] = prev_x;
 		sol[6 * central + 2] = prev_y;
-		sol[6 * molec_2 + 2] = prev_y;*/
-
-		ech = ajuns_la_echilibru();
-
-		sprintf(fisier_out, "%s\\pas %d.dat", cale_out, count);
-		ofstream fout(fisier_out);
+		//********************MODIFICARE**********************************
+		sol[6 * molec_2 + 2] = prev_y;
+		cout << count << '\n';
+		char cale_out[150] = "D:\\Simulari\\Spin\\Rigidizare\\Rezultate\\Ech_mecanic\\Hexagon 2791";
+		char fisier_out2[300];
+		sprintf(fisier_out2, "%s\\Pas %d.dat", cale_out, count);
+		ofstream fout2(fisier_out2);
 		for (int i = 0; i < DIM; i++)
 		{
-			fout << sol[6 * i] << ' ' << sol[6 * i + 2] << ' ' << pressure[i] << '\n';
+			fout2 << sol[6 * i] << ' ' << sol[6 * i + 2] << ' ' << pressure[i] << ' ' << r[i] << '\n';
 		}
-		fout.close();
+		fout2.close();
+		ech = ajuns_la_echilibru();
 	}
 	gsl_odeiv2_driver_free(d);
+}
 
+int func(double t, const double sol[], double f[], void* params)
+{
+	(void)(t);
+	damping_params damping = *(damping_params*)params;
+	int part;
+	double radical;
+	double neigh_x_centru, neigh_y_centru;
+	double x_nou, y_nou;
+	double theta;
+	int neigh, tip;
+	char ordin[] = { 0, 4, 3, 5, 2, 0, 1 };
+	double Fex = 0, Fey = 0, F_rig = 0, Fe = 0;
+	double own_anch_x, own_anch_y, neigh_anch_x, neigh_anch_y, diff_anch_x, diff_anch_y;
+	for (int i = 0; i < DIM; i++)
+	{
+		update_anch_init_pos(i);
+		anchors(i);
+		Fx[i] = 0;
+		Fy[i] = 0;
+		Mom[i] = 0;
+		pressure[i] = 0;
+	}
+
+	for (int dot = 0; dot < DIM; dot++)
+	{
+		theta = sol[6 * dot + 4];
+		for (int j = 0; j < 6; j++)
+		{
+			Fex = 0;
+			Fey = 0;
+			neigh = vecin[dot][j].index;
+			if (neigh < 0)
+				continue;
+			tip = vecin[dot][j].type;
+			own_anch_x = anch[dot][tip].x;
+			own_anch_y = anch[dot][tip].y;
+			neigh_anch_x = anch[neigh][7 - tip].x;
+			neigh_anch_y = anch[neigh][7 - tip].y;
+			diff_anch_x = neigh_anch_x - own_anch_x;
+			diff_anch_y = neigh_anch_y - own_anch_y;
+			radical = sqrt(diff_anch_x*diff_anch_x + diff_anch_y * diff_anch_y);
+			Fe = kappa * (radical - L);
+			Fex = Fe * diff_anch_x / radical;
+			Fey = Fe * diff_anch_y / radical;
+
+			neigh_x_centru = sol[6 * neigh];
+			neigh_y_centru = sol[6 * neigh + 2];
+			if (tip == 1 || tip == 6)
+			{
+				x_nou = (neigh_anch_x - neigh_x_centru) / (neigh_anch_y - neigh_y_centru)*
+					(own_anch_y - neigh_anch_y) + neigh_anch_x;
+				F_rig = rigid_translatie / L * (x_nou - own_anch_x);
+				Fex += F_rig;
+			}
+			else
+			{
+				y_nou = (neigh_anch_y - neigh_y_centru) / (neigh_anch_x - neigh_x_centru) *
+					(own_anch_x - neigh_anch_x) + neigh_anch_y;
+				F_rig = rigid_translatie / L * (y_nou - own_anch_y);
+				Fey += F_rig;
+			}
+
+			Mom[dot] += Fey * r[dot] * cos(Pi / 6 + theta + ordin[tip]) - Fex * r[dot] * sin(Pi / 6 + theta + ordin[tip])
+				- rigid_rotatie * r[dot] * sin(theta);
+			Fx[dot] += Fex;
+			Fy[dot] += Fey;
+			pressure[dot] += Fe; //presiunea este k elastic * elongatiile resorturilor inconjuratoare
+		}
+
+		part = 6 * dot;
+		f[part] = sol[part + 1];
+		f[part + 1] = Fx[dot] - damping.translatie * sol[part + 1];
+		f[part + 2] = sol[part + 3];
+		f[part + 3] = Fy[dot] - damping.translatie * sol[part + 3];
+		f[part + 4] = sol[part + 5];
+		f[part + 5] = Mom[dot] - damping.rotatie * sol[part + 5];
+	}
+	return GSL_SUCCESS;
 }
 
 void tip_vecini()
@@ -183,13 +263,13 @@ void tip_vecini()
 			x_neigh = sol[6 * neigh];
 			y_neigh = sol[6 * neigh + 2];
 
-			if (abs(x_neigh - x)<0.05 && y_neigh < y)
+			if (abs(x_neigh - x) < 0.05 && y_neigh < y)
 			{
 				vecin[i][j].type = 1;
 				continue;
 			}
 			if (x_neigh < x && y_neigh < y)
-			{		
+			{
 				vecin[i][j].type = 2;
 				continue;
 			}
@@ -221,22 +301,22 @@ void update_anch_init_pos(int dot)
 {
 	double x_centru = sol[6 * dot];
 	double y_centru = sol[6 * dot + 2];
-//OK
+	//OK
 	anch[dot][1].x_init = x_centru;
 	anch[dot][1].y_init = y_centru - r[dot];
-//OK
+	//OK
 	anch[dot][2].x_init = x_centru - r[dot] * cosPi6;
 	anch[dot][2].y_init = y_centru - r[dot] * sinPi6;
-//OK
+	//OK
 	anch[dot][3].x_init = x_centru + r[dot] * cosPi6;
 	anch[dot][3].y_init = y_centru - r[dot] * sinPi6;
-//OK
+	//OK
 	anch[dot][4].x_init = x_centru - r[dot] * cosPi6;
 	anch[dot][4].y_init = y_centru + r[dot] * sinPi6;
-//OK
+	//OK
 	anch[dot][5].x_init = x_centru + r[dot] * cosPi6;
 	anch[dot][5].y_init = y_centru + r[dot] * sinPi6;
-//OK
+	//OK
 	anch[dot][6].x_init = x_centru;
 	anch[dot][6].y_init = y_centru + r[dot];
 }
@@ -267,106 +347,6 @@ bool ajuns_la_echilibru()
 			return 0;
 	}
 	return 1;
-}
-
-int func(double t, const double sol[], double f[], void* params)
-{
-	(void)(t);
-	damping_params damping = *(damping_params*)params;
-	int part;
-	double radical;
-	double radical2;
-	double neigh_x_centru, neigh_y_centru;
-	double x_nou, y_nou;
-	double theta;
-	int neigh;
-	int tip;
-	char ordin[] = { 0, 4, 3, 5, 2, 0, 1 };
-	double Fex = 0, Fey = 0, F_rig = 0, Fe = 0, Fe2 = 0, Fex2=0, Fey2=0;
-	double diff, diff2;
-	for (int i=0; i < DIM; i++)
-	{
-		update_anch_init_pos(i);
-		anchors(i);
-		Fx[i] = 0;
-		Fy[i] = 0;
-		Mom[i] = 0;	
-	}
-
-	for (int dot = 0; dot < DIM; dot++)
-	{
-		theta = sol[6 * dot + 4];
-		for (int j = 0; j < 6; j++)
-		{
-			Fex = 0;
-			Fey = 0;
-			neigh = vecin[dot][j].index;
-			if (neigh < 0)
-				continue;
-
-			tip = vecin[dot][j].type;
-			radical = sqrt((anch[dot][tip].x - anch[neigh][7 - tip].x)*(anch[dot][tip].x - anch[neigh][7 - tip].x) +
-				(anch[dot][tip].y - anch[neigh][7 - tip].y)*(anch[dot][tip].y - anch[neigh][7 - tip].y));
-			Fe = kappa * (radical - L);
-			Fex = Fe * (anch[neigh][7 - tip].x - anch[dot][tip].x) / radical;
-			Fey = Fe * (anch[neigh][7 - tip].y - anch[dot][tip].y) / radical;
-			
-			radical2 = sqrt((sol[6 * neigh] - sol[6 * dot]) * (sol[6 * neigh] - sol[6 * dot]) + (sol[6 * neigh + 2] - sol[6 * dot + 2]) * (sol[6 * neigh + 2] - sol[6 * dot + 2]));
-			Fe2 = kappa * (radical2 - r[dot] - r[neigh] - L);
-			Fex2 = Fe2 * (sol[6 * neigh] - sol[6 * dot]) / radical2;
-			Fey2 = Fe2 * (sol[6 * neigh + 2] - sol[6 * dot + 2]) / radical2;
-			diff = (anch[neigh][7 - tip].y - anch[dot][tip].y) / radical;
-			diff2 = (sol[6 * neigh + 2] - sol[6 * dot + 2]) / radical2;
-			/*if (abs(diff - diff2) > 0.1)
-			{
-				cout << "\n\n WARNING!!!\n\n\n";
-				cout << "Index: " << dot << " vecin cu indexul: " << neigh << " de tipul: " << tip << '\n';
-				cout << "Coordonatele centrului: " << sol[6 * dot] << ' ' << sol[6 * dot + 2] << '\n';
-				cout << "Unghiul: " << sol[6 * dot + 4] << '\n';
-				cout << "Ancora - coord initiale: " << anch[dot][tip].x_init << ' ' << anch[dot][tip].y_init << '\n';
-				cout << "Ancora: "<< anch[dot][tip].x << ' ' << anch[dot][tip].y << "\n\n\n";
-				cout << "Coordonatele vecinului: " << sol[6 * neigh] << ' ' << sol[6 * neigh + 2] << '\n';
-				cout << "Unghiul vecinului: " << sol[6 * neigh + 4] << '\n';
-				cout << "Ancora vecinului - coord initiale: " << anch[neigh][7 - tip].x_init << ' ' << anch[neigh][7 - tip].y_init << '\n';
-				cout << "Ancora vecinului: " << anch[neigh][7 - tip].x << ' ' << anch[neigh][7 - tip].y << '\n';
-				
-			}*/
-			
-			//cout << "Y diff: " << (anch[neigh][7 - tip].y - anch[dot][tip].y) / radical << "-----  " << (sol[6 * neigh + 2] - sol[6 * dot + 2]) / radical2 << "\n";
-			//neigh_x_centru = sol[6 * neigh];
-			//neigh_y_centru = sol[6 * neigh + 2];
-			//if (tip == 1 || tip == 6)
-			//{
-			//	x_nou = (anch[neigh][7 - tip].x - neigh_x_centru) / (anch[neigh][7 - tip].y - neigh_y_centru)*
-			//		(anch[dot][tip].y - anch[neigh][7 - tip].y) + anch[neigh][7 - tip].x;
-			//	F_rig = rigid_translatie / L * (x_nou - anch[dot][tip].x);
-			//	//cout << "F_rig: " << F_rig << '\n';
-			//	Fex += F_rig;
-			//}
-			//else //tipul e 2, 3, 4, 5;
-			//{
-			//	y_nou = (anch[neigh][7 - tip].y - neigh_y_centru) / (anch[neigh][7 - tip].x - neigh_x_centru) *
-			//		(anch[dot][tip].x - anch[neigh][7 - tip].x) + anch[neigh][7 - tip].y;
-			//	F_rig = rigid_translatie / L * (y_nou - anch[dot][tip].y);
-			//	//cout << "F_rig: " << F_rig << '\n';
-			//	Fey += F_rig;
-			//}
-
-		 //Mom[dot] += Fey * r[dot] * cos(Pi / 6 + theta + ordin[tip]) - Fex * r[dot] * sin(Pi / 6 + theta + ordin[tip])
-			//	- rigid_rotatie * r[dot] * sin(theta);
-			Fx[dot] += Fex;
-			Fy[dot] += Fey;
-		}
-		pressure[dot] = sqrt(Fx[dot] * Fx[dot] + Fy[dot] * Fy[dot]);
-		part = 6 * dot;
-		f[part] = sol[part + 1];
-		f[part + 1] = Fx[dot] - damping.translatie * sol[part + 1];
-		f[part + 2] = sol[part + 3];
-		f[part + 3] = Fy[dot] - damping.translatie * sol[part + 3];
-		f[part + 4] = 0 /*sol[part + 5]*/;
-		f[part + 5] = 0 /*Mom[i] - damping.rotatie * sol[part + 5]*/;
-	}
-	return GSL_SUCCESS;
 }
 
 int jac(double t, const double y[], double* dfdy, double dfdt[], void* params)
