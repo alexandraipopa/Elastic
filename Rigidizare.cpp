@@ -46,15 +46,15 @@ int jac(double t, const double y[], double* dfdy, double dfdt[], void* params);
 void sistem_in_echilibru();
 bool ajuns_la_echilibru();
 
-const double tau = 80;
+const double tau = 10;
 const double D = 1000;
 const double dS = 7;
 const double T = 50;
 const double Ea = 400;
 const double L = 0.6;
 
-const double kappa = 10;
-const double k_elastic = 1450;
+const double kappa = 1450;
+const double k_elastic = 5;
 const double rigid_translatie = 1;
 const double rigid_rotatie = 1;
 
@@ -79,8 +79,9 @@ int main(void)
 	std::uniform_real_distribution <double> distribution(0.0, 1.0);
 
 	char cale_in[100] = "D:\\Simulari\\Spin\\Rigidizare\\Hexagoane";
-	char cale_out[150] = "D:\\Simulari\\Spin\\Rigidizare\\Rezultate\\Echilibru mecanic\\Hexagon 2791";
-	char fisier_in[200];
+	char cale_out[200] = "D:\\Simulari\\Spin\\Rigidizare\\Relaxare\\Hexagon 2791\\k=5 r_tr=1 r_rot=1 damp_tr=10 damp_rot=1";
+	char cale_out2[200] = "D:\\Simulari\\Spin\\Rigidizare\\Relaxare\\Hexagon 2791\\k=5 r_tr=1 r_rot=1 damp_tr=10 damp_rot=1\\Config inter";
+	char fisier_out[300], fisier_out2[300], fisier_in[200];
 
 	sprintf(fisier_in, "%s\\hexagon%d.dat", cale_in, DIM);
 
@@ -88,7 +89,6 @@ int main(void)
 	for (int i = 0; i < DIM; i++)
 	{
 		fin >> sol[6 * i] >> sol[6 * i + 2];
-		r[i] = 0.2;
 		for (int j = 0; j < 6; j++)
 		{
 			fin >> vecin[i][j].index;
@@ -119,10 +119,74 @@ int main(void)
 
 	for (int i = 0; i < DIM; i++)
 	{
-		if (sol[6 * i] < -1.0)
-			r[i] = 0.22;
+		r[i] = 0.22;
+		sol[6 * i] *= 1.04;
+		sol[6 * i + 2] *= 1.04;
 	}
-	sistem_in_echilibru();
+
+
+	double nHS = DIM;
+	sprintf(fisier_out, "%s\\Relaxare_nHS.dat", cale_out);
+	ofstream fout(fisier_out);
+
+	//*************************************RELAXARE********************************************
+	double subunitar;
+	double P_LS_HS, P_HS_LS;
+	int dot;
+	int timp = 1, timp_total = 1000000;
+	for (; timp <= timp_total; timp++)
+	{
+		fout << timp << ' ' << (double)nHS / DIM << '\n';
+		cout << timp << ' ' << (double)nHS / DIM << '\n';
+		if (double(nHS / DIM) < 0.002)
+			exit(0);
+		std::random_shuffle(std::begin(index), std::end(index));
+		for (int i = 0; i < DIM; i++)
+		{
+			dot = index[i];
+			subunitar = distribution(generator);
+			if (r[dot] < 0.21) //inseamna ca e in LS
+			{
+				P_LS_HS = 1 / tau * exp((D - T * dS) / (2 * T))*exp(-(Ea - kappa * pressure[dot]) / T);
+				//cout << P_HS_LS << '\n';
+				if (subunitar < P_LS_HS)
+				{
+					r[dot] = 0.22;
+					nHS++;
+				}
+			}
+			else
+			{
+				P_HS_LS = 1 / tau * exp((D - T * dS) / (2 * T))*exp(-(Ea + kappa * pressure[dot]) / T);
+				//cout << P_HS_LS << '\n';
+				if (subunitar < P_HS_LS)
+				{
+					r[dot] = 0.2;
+					nHS--;
+					//cout << "ARE LOC O TRANZITIE" << '\n';
+				}
+			}
+		}
+		sistem_in_echilibru();
+		if (!(timp % 2))
+		{
+			sprintf(fisier_out2, "%s\\timp%d centru_fix.dat", cale_out2, timp);
+			ofstream fout2(fisier_out2);
+			for (int i = 0; i < DIM; i++)
+			{
+				fout2 << sol[6 * i] << ' ' << sol[6 * i + 2] << ' ' << pressure[i] << ' ' << r[i] << '\n';
+			}
+			fout2.close();
+		}
+	}
+	fout.close();
+	//ALTE DETALII
+	char fisier_out3[300];
+	sprintf(fisier_out3, "%s\\Unghiuri finale.dat", cale_out);
+	ofstream fout3(fisier_out3);
+	for (int i = 0; i < DIM; i++)
+		fout3 << sol[6 * i + 4] << '\n';
+	fout3.close();
 }
 
 void sistem_in_echilibru()
@@ -148,17 +212,8 @@ void sistem_in_echilibru()
 		sol[6 * central] = prev_x;
 		sol[6 * central + 2] = prev_y;
 		//********************MODIFICARE**********************************
-		sol[6 * molec_2 + 2] = prev_y;
-		cout << count << '\n';
-		char cale_out[150] = "D:\\Simulari\\Spin\\Rigidizare\\Rezultate\\Ech_mecanic\\Hexagon 2791";
-		char fisier_out2[300];
-		sprintf(fisier_out2, "%s\\Pas %d.dat", cale_out, count);
-		ofstream fout2(fisier_out2);
-		for (int i = 0; i < DIM; i++)
-		{
-			fout2 << sol[6 * i] << ' ' << sol[6 * i + 2] << ' ' << pressure[i] << ' ' << r[i] << '\n';
-		}
-		fout2.close();
+		//sol[6 * molec_2 + 2] = prev_y;
+
 		ech = ajuns_la_echilibru();
 	}
 	gsl_odeiv2_driver_free(d);
@@ -205,10 +260,9 @@ int func(double t, const double sol[], double f[], void* params)
 			diff_anch_x = neigh_anch_x - own_anch_x;
 			diff_anch_y = neigh_anch_y - own_anch_y;
 			radical = sqrt(diff_anch_x*diff_anch_x + diff_anch_y * diff_anch_y);
-			Fe = kappa * (radical - L);
+			Fe = k_elastic * (radical - L);
 			Fex = Fe * diff_anch_x / radical;
 			Fey = Fe * diff_anch_y / radical;
-
 			neigh_x_centru = sol[6 * neigh];
 			neigh_y_centru = sol[6 * neigh + 2];
 			if (tip == 1 || tip == 6)
@@ -230,7 +284,7 @@ int func(double t, const double sol[], double f[], void* params)
 				- rigid_rotatie * r[dot] * sin(theta);
 			Fx[dot] += Fex;
 			Fy[dot] += Fey;
-			pressure[dot] += Fe; //presiunea este k elastic * elongatiile resorturilor inconjuratoare
+			pressure[dot] += Fe; // NU LUAM IN CALCUL FORTELE DE TORSIUNE
 		}
 
 		part = 6 * dot;
