@@ -26,15 +26,15 @@ void sistem_in_echilibru();
 double probabilityHS_LS(int dot);
 double probabilityLS_HS(int dot);
 
-double tau = 400;
+double tau = 500;
 double D = 1000;
 double dS = 7;
 double T = 50;
 double Ea = 400;
 double L = 0.6;
 double mu = 10;
-double kappa = 5;
-double k_elastic = 1450;
+double kappa = 1450;
+double k_elastic = 20;
 
 int index[DIM];
 
@@ -53,7 +53,7 @@ int main(void)
 
 
 	char cale_in[100] = "D:\\Simulari\\Spin\\Elastic\\Hexagoane";
-	char cale_out[150] = "D:\\Simulari\\Spin\\Elastic\\Rezultate\\Relaxare\\hexagon2791\\kappa_5";
+	char cale_out[150] = "D:\\Simulari\\Spin\\Elastic\\Rezultate\\Relaxare\\hexagon2791\\k_elastic_20";
 
 	char fisier_in[200], fisier_out1[300], fisier_out2[300];
 
@@ -91,7 +91,7 @@ int main(void)
 	{
 		fout1 << timp << ' ' << nHS / DIM << '\n';
 		cout << timp << ' ' << nHS / DIM << '\n';
-		if (nHS < 0.002)
+		if (double (nHS/DIM) < 0.002)
 			exit(0);
 
 		std::random_shuffle(std::begin(index), std::end(index));
@@ -124,9 +124,9 @@ int main(void)
 			}
 		}
 		sistem_in_echilibru();
-		if (double (nHS/DIM) < 0.7 && double (nHS/DIM)>0.6 )
+		if (double(nHS / DIM) < 0.7 && double(nHS / DIM) > 0.6)
 		{
-			sprintf(fisier_out2, "%s\\hexagon%d_timp%d_nHS%f.dat", cale_out, DIM, timp, nHS / DIM);
+			sprintf(fisier_out2, "%s\\timp%d_nHS%f.dat", cale_out, timp, nHS / DIM);
 			ofstream fout2(fisier_out2);
 			for (int i = 0; i < DIM; i++)
 			{
