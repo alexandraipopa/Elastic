@@ -11,18 +11,20 @@
 
 using namespace std;
 
-#define DIM 10981
+#define DIM 13824
 
 int vecin[DIM][6];
+double init_dist[DIM][6];
+
 double sol[4 * DIM];
 double prev_pos[4 * DIM];
-double prev_elongation[DIM][DIM];
 
 struct raza
 {
 	double x, y;
 };
 raza r[DIM];
+
 double pressure[DIM];
 
 int func(double t, const double sol[], double f[], void* params);
@@ -30,22 +32,30 @@ int jac(double t, const double y[], double* dfdy, double dfdt[], void* params);
 bool ajuns_la_echilibru();
 void sistem_in_echilibru();
 
-bool spin_state[DIM];
-
-double tau = 4000;
+double tau = 2000;
 double D = 1000;
 double dS = 7;
 double T = 50;
 double Ea = 400;
-double L = 0.6;
+
 double mu = 10;
 double kappa = 1450;
 double k = 8;
-double drx = 0.025;
-double dry = 0.015; 
+double drx = 0.02;
+double dry = 0.02;
 
 int index[DIM];
+
+int particula_fixata=-100; 
+double prev_x, prev_y;
+int particula_fixata2 = -100;
+double prev_x2, prev_y2;
+
 int timp;
+
+char cale_in[100] = "D:\\Simulari\\Spin\\Elastic\\dreptunghi.dat";
+char cale_out[150] = "D:\\Simulari\\Spin\\Elastic\\Rezultate\\Anizotropie raze\\dreptunghi\\k=8 drx=0.02 dry=0.02";
+char fisier_out1[300], fisier_out2[300];
 
 int main(void)
 {
@@ -59,10 +69,6 @@ int main(void)
 
 	double nHS;
 
-	char cale_in[100] = "D:\\Simulari\\Spin\\Elastic\\Hexagoane\\dreptunghi.dat";
-	char cale_out[150] = "D:\\Simulari\\Spin\\Elastic\\Rezultate\\Anizotropie raze\\dreptunghi\\k=8 drx=0.025 dry=0.015";
-
-	char fisier_out1[300], fisier_out2[300];
 
 	ifstream fin(cale_in);
 	for (int i = 0; i < DIM; i++)
@@ -78,26 +84,53 @@ int main(void)
 		index[i] = i;
 		r[i].x = 0.2;
 		r[i].y = 0.2;
+		if (sol[4 * i] > -0.1 && sol[4 * i]<0.1 && sol[4 * i + 2]>-0.1 && sol[4 * i + 2] < 0.1)
+		{
+			particula_fixata = i;
+			prev_x = sol[4 * i];
+			prev_y = sol[4 * i + 2];
+		}
+		if (sol[4 * i] > -0.1 && sol[4 * i] < 0.1)
+		{
+			particula_fixata2 = i;
+			prev_x2 = sol[4 * i];
+			prev_y2 = sol[4 * i + 2];
+		}
+
 	}
 	fin.close();
+	if (particula_fixata < 0)
+		cout << "WARNING! NU AM PARTICULA FIXATA!" << '\n';
+	else
+		cout << "Indexul particulei fixate este: " << particula_fixata << '\n';
 
+	//trebuie sa ma ocup de calculul initial distance-ului;
+	for (int i = 0; i < DIM; i++)
+		for (int j = 0; j < 6; j++)
+		{
+			if (vecin[i][j] > -1)
+				init_dist[i][j] = sqrt((fabs(sol[4 * i] - sol[4 * vecin[i][j]]) - r[i].x - r[vecin[i][j]].x)*(fabs(sol[4 * i] - sol[4 * vecin[i][j]]) - r[i].x - r[vecin[i][j]].x) +
+				(fabs(sol[4 * i + 2] - sol[4 * vecin[i][j] + 2]) - r[i].y - r[vecin[i][j]].y) * (fabs(sol[4 * i + 2] - sol[4 * vecin[i][j] + 2]) - r[i].y - r[vecin[i][j]].y));
+			else
+				init_dist[i][j] = -100;
+		}
 	for (int i = 0; i < DIM; i++)
 	{
-		sol[4 * i] *= 1.04;
-		sol[4 * i + 2] *= 1.04;
-		r[i].x +=drx;
+		r[i].x += drx;
 		r[i].y += dry;
-		spin_state[i] = 1;
 	}
-	//sistem_in_echilibru();
-	/*sprintf(fisier_out2, "%s\\dreptunghi_inceput.dat", cale_out);
+	sistem_in_echilibru();
+	cout << "Am realizat echilibrul! \n";
+
+	sprintf(fisier_out2, "%s\\dreptunghi_inceput.dat", cale_out);
 	ofstream fout2(fisier_out2);
 	for (int i = 0; i < DIM; i++)
 	{
-		fout2 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << spin_state[i] << '\n';
+		fout2 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i].x << '\n';
 	}
-	fout2.close();*/
+	fout2.close(); 
 
+	// ************************************************ RELAXARE ****************************************************************
 	nHS = DIM;
 
 	sprintf(fisier_out1, "%s\\nHS.dat", cale_out);
@@ -120,16 +153,15 @@ int main(void)
 			part = index[i];
 			//cout << pressure[part] << '\n';
 			subunitar = distribution(generator);
-			if (spin_state==0) //adica molecula e in low spin
+			if (r[part].x<0.21) //adica molecula e in low spin
 			{
 				P = 1 / tau * exp(-((D - T * dS) / (2 * T)))*exp(-((Ea - kappa * pressure[part]) / (T)));;
-				cout << P << '\n';
+				//cout << P << '\n';
 
 				if (subunitar < P)
 				{
-					r[part].x += drx;
+					r[part].x += drx; //Atunci trece in High Spin
 					r[part].y += dry;
-					spin_state[part] = 1;
 					nHS++;
 				}
 			}
@@ -140,23 +172,21 @@ int main(void)
 
 				if (subunitar < P)
 				{
-					r[part].x -= drx;
-					r[part].y -= dry;
-					spin_state[part] = 0;
+					r[part].x = 0.2;
+					r[part].y = 0.2;
 					nHS--;
 				}
 			}
 		}
 		sistem_in_echilibru();
-		sprintf(fisier_out2, "%s\\timp%d.dat", cale_out, timp);
+		sprintf(fisier_out2, "%s\\timp%d nHS%.3f.dat", cale_out, timp, nHS / DIM);
 		ofstream fout3(fisier_out2);
 		for (int i = 0; i < DIM; i++)
 		{
-			fout3 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << spin_state[i] << '\n';
+			fout3 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i].x << '\n';
 		}
 		fout3.close();
 	}
-
 	fout1.close();
 	return 0;
 }
@@ -187,8 +217,25 @@ void sistem_in_echilibru()
 		for (int j = 0; j < DIM; j += 1)
 		{
 			prev_pos[4 * j] = sol[4 * j];
-			prev_pos[4 * j + 2] = sol[4 * j + 2];
+			//cout << sol[4 * j] << ' ' << sol[4 * j + 2] << '\n';
+			prev_pos[4 * j + 2] = sol[4 * j + 2]; 
+			if (prev_pos[4 * j] > 1000 || prev_pos[4 * j + 2] > 1000)
+			{
+				cout << "WARNING!!! SISTEMUL O IA LA FUGA!!!!\n";
+				/*for (int i = 0; i < DIM; i++)
+					cout << prev_pos[4 * i] << ' ' << prev_pos[4 * i + 2] << '\n';
+			}
+			//AICI imi afiseaza solutii kilometrice, de ordinul 10 la a 9-a*/
+				cout << "Punctul cu PRICINA este: " << j << "de coordonate: " << sol[4 * j] << ' ' << sol[4 * j + 2] << '\n';
+			}
 		}
+		sprintf(fisier_out2, "%s\\nr_pas%d.dat", cale_out, count);
+		ofstream fout3(fisier_out2);
+		for (int i = 0; i < DIM; i++)
+		{
+			fout3 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i].x << '\n';
+		}
+		fout3.close();
 		count++;
 		double ti = count * t1 / 100.0;
 		int status = gsl_odeiv2_driver_apply(d, &t, ti, sol);
@@ -197,6 +244,10 @@ void sistem_in_echilibru()
 			printf("error, return value=%d\n", status);
 			break;
 		}
+		sol[4 * particula_fixata] = prev_x;
+		sol[4 * particula_fixata + 2] = prev_y;
+		sol[4 * particula_fixata2] = prev_x2;
+		sol[4 * particula_fixata2 + 2] = prev_y2;
 		ech = ajuns_la_echilibru();
 	}
 	gsl_odeiv2_driver_free(d);
@@ -207,10 +258,8 @@ int func(double t, const double sol[], double f[], void* params)
 	(void)(t); /* avoid unused parameter warning */
 	double mu = *(double*)params;
 	int part, neigh;
-	double Fe, Fex, Fey;
-	double Fx, Fy;
-	double elongation_x, elongation_y, elongation;
-	double prev_dist_x, prev_dist_y;
+	double Fe, Fx, Fy;
+	double elongation, total_distance;
 	double dist_x, dist_y;
 	for (int i = 0; i < DIM; i++)
 	{
@@ -225,37 +274,26 @@ int func(double t, const double sol[], double f[], void* params)
 				continue;
 			else
 			{
+				dist_x = fabs(sol[neigh] - sol[part]) - r[i].x - r[vecin[i][j]].x;
+				dist_y = fabs(sol[neigh + 2] - sol[part + 2]) - r[i].y - r[vecin[i][j]].y;
 
-				prev_dist_x = fabs(prev_pos[part] - prev_pos[neigh]) - r[i].x - r[vecin[i][j]].x;
-				dist_x=fabs(sol[neigh]-sol[part]) - r[i].x - r[vecin[i][j]].x;
-				elongation_x = dist_x - prev_dist_x;
-				Fex = k * elongation_x;
-				
-				prev_dist_y = fabs(prev_pos[part+2] - prev_pos[neigh+2]) - r[i].y - r[vecin[i][j]].y;
-				dist_y = fabs(sol[neigh+2] - sol[part+2]) - r[i].y - r[vecin[i][j]].y;
-				elongation_y = dist_y - prev_dist_y;
-				Fey = k * elongation_y;
+				total_distance = sqrt(dist_x*dist_x + dist_y * dist_y);
 
-				Fe = sqrt(Fex * Fex + Fey * Fey);
-				elongation = sqrt(elongation_x*elongation_x + elongation_y * elongation_y);
+				elongation = total_distance - init_dist[i][j];
+				//cout << elongation << '\n';
+				Fe = elongation * k;
+				pressure[i] += Fe;
 
-
-				if (elongation-prev_elongation[i][j] < 0) //inseamna ca e comprimat
-					pressure[i] += Fe * (-1);
-				else
-					pressure[i] += Fe;
-				prev_elongation[i][j] = elongation;
-				Fx += Fex;
-				Fy += Fey;
+				Fx += Fe * dist_x / total_distance;
+				Fy += Fe * dist_y / total_distance;
 			}
 		}
-
+		//cout << Fx << ' ' << Fy << '\n';
 		f[part] = sol[part + 1];
 		f[part + 1] = Fx - mu * sol[part + 1];
 		f[part + 2] = sol[part + 3];
 		f[part + 3] = Fy - mu * sol[part + 3];
 	}
-
 	return GSL_SUCCESS;
 }
 
