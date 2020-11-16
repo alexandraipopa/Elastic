@@ -1,0 +1,357 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
+#include <fstream>
+#include <cmath>
+#include <stdio.h>
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_odeiv2.h>
+#include <algorithm>
+#include <random>
+
+using namespace std;
+
+#define DIM 13824
+struct vec
+{
+	int index;
+	int type;
+};
+struct anchor
+{
+	double x, y;
+};
+
+anchor anch[DIM][7];
+vec vecin[DIM][6];
+
+double sol[4 * DIM]; //6 * DIM fiindca avem si theta si d theta
+double prev_pos[4 * DIM];
+struct raza { double x, y; };
+raza r[DIM];
+double pressure[DIM];
+
+void tip_vecini();
+void update_anch(int dot);
+
+int func(double t, const double sol[], double f[], void* params);
+int jac(double t, const double y[], double* dfdy, double dfdt[], void* params);
+
+void sistem_in_echilibru();
+bool ajuns_la_echilibru();
+
+const double tau = 2000;
+const double D = 1000;
+const double dS = 7;
+const double T = 50;
+const double Ea = 400;
+const double L = 0.6;
+double mu = 10; 
+
+const double kappa = 1450;
+const double k_elastic = 5;
+
+double drx = 0.02; 
+double dry = 0.02; 
+const double Pi = 3.1415926535897932384626433832795;
+
+const double sinPi6 = sin(Pi / 6.0);
+const double cosPi6 = cos(Pi / 6.0);
+
+int index[DIM]; //pentru shuffle
+
+double x_minim;
+int central;
+double prev_x, prev_y;
+
+char cale_in[100] = "D:\\Simulari\\Spin\\Elastic\\dreptunghi.dat";
+char cale_out[150] = "D:\\Simulari\\Spin\\Elastic\\Rezultate\\Anizotropie raze\\dreptunghi\\k=5 drx=0.02 dry=0.02";
+char fisier_out[300], fisier_out2[300];
+
+int main(void)
+{
+	std::random_device device;
+	std::mt19937 generator(device());
+	std::uniform_real_distribution <double> distribution(0.0, 1.0);
+
+
+	ifstream fin(cale_in);
+	for (int i = 0; i < DIM; i++)
+	{
+		fin >> sol[4 * i] >> sol[4 * i + 2];
+		for (int j = 0; j < 6; j++)
+		{
+			fin >> vecin[i][j].index;
+			vecin[i][j].index -= 1; //vecinii sunt indexati de la 1
+		}
+		x_minim = min(x_minim, sol[4 * i]); // pentru fixarea moleculei cu 1 grad de libertate;
+		sol[4 * i + 1] = 0;
+		sol[4 * i + 3] = 0;
+		index[i] = i;
+		r[i].x = 0.2; 
+		r[i].y = 0.2;
+	}
+	fin.close();
+	for (int i = 0; i < DIM; i++)
+	{
+		if (abs(sol[4 * i]) < 0.01 && abs(sol[4 * i + 2]) < 0.01)
+			central = i;
+	}
+	prev_x = sol[4 * central];
+	prev_y = sol[4 * central + 2];
+	
+	tip_vecini();
+
+
+	for (int i = 0; i < DIM; i++)
+	{
+		r[i].x += drx;
+		r[i].y += dry; 
+		sol[4 * i] *= 1.04; //asta stiu eu ca asa trebuie pentru drx=dry=0.02
+		sol[4 * i + 2] *= 1.04;
+	}
+	//aici ii voi da un sistem_in_echilibru
+
+
+	double nHS = DIM;
+	sprintf(fisier_out, "%s\\Relaxare_nHS.dat", cale_out);
+	ofstream fout(fisier_out);
+
+	//*************************************RELAXARE********************************************
+	double subunitar;
+	double P_LS_HS, P_HS_LS;
+	int dot;
+	int timp = 1, timp_total = 1000000;
+	for (; timp <= timp_total; timp++)
+	{
+		fout << timp << ' ' << (double)nHS / DIM << '\n';
+		cout << timp << ' ' << (double)nHS / DIM << '\n';
+		if (double(nHS / DIM) < 0.004)
+			break;
+		std::random_shuffle(std::begin(index), std::end(index));
+		for (int i = 0; i < DIM; i++)
+		{
+			dot = index[i];
+			subunitar = distribution(generator);
+			if (r[dot].x < 0.21) //inseamna ca e in LS
+			{
+				P_LS_HS = 1 / tau * exp(-(D - T * dS) / (2 * T))*exp(-(Ea - kappa * pressure[dot]) / T);
+				//cout << P_HS_LS << '\n';
+				if (subunitar < P_LS_HS)
+				{
+					r[dot].x += drx;
+					r[dot].y += dry;
+					nHS++;
+					//cout << "ARE LOC UN SWITCH DIN LS IN HS\n";
+				}
+			}
+			else
+			{
+				P_HS_LS = 1 / tau * exp((D - T * dS) / (2 * T))*exp(-(Ea + kappa * pressure[dot]) / T);
+				//cout << P_HS_LS << '\n';
+				if (subunitar < P_HS_LS)
+				{
+					r[dot].x = 0.2;
+					r[dot].y = 0.2;
+					nHS--;
+					//cout << "ARE LOC UN SWITCH DIN HS IN LS\n";
+					//cout << "ARE LOC O TRANZITIE" << '\n';
+				}
+			}
+		}
+		sistem_in_echilibru();
+		if (!(timp % 1))
+		{
+			sprintf(fisier_out2, "%s\\timp%d nHS %f.dat", cale_out, timp, nHS/DIM);
+			ofstream fout2(fisier_out2);
+			for (int i = 0; i < DIM; i++)
+			{
+				fout2 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i].x << '\n';
+			}
+			fout2.close();
+		}
+	}
+	fout.close();
+}
+
+void sistem_in_echilibru()
+{
+	int count = 0;
+	double t = 0.0, t1 = 100.0;
+	gsl_odeiv2_system sys = { func, jac, 6 * DIM, &mu };
+	gsl_odeiv2_driver* d = gsl_odeiv2_driver_alloc_y_new(&sys, gsl_odeiv2_step_rk8pd, 1e-6, 1e-6, 0.0);
+
+	bool ech = 0;
+	while (!ech)
+	{
+		for (int j = 0; j < DIM; j += 1)
+		{
+			prev_pos[4 * j] = sol[4 * j];
+			prev_pos[4 * j + 2] = sol[4 * j + 2];
+		}
+		/*sprintf(fisier_out2, "%s\\nr_pas%d.dat", cale_out, count);
+		ofstream fout3(fisier_out2);
+		for (int i = 0; i < DIM; i++)
+		{
+			fout3 << sol[4 * i] << ' ' << sol[4 * i + 2] << ' ' << r[i].x << '\n';
+		}
+		fout3.close();*/
+		count++;
+		double ti = count * t1 / 100.0;
+		int status = gsl_odeiv2_driver_apply(d, &t, ti, sol);
+		if (status != GSL_SUCCESS)
+			printf("error, return value=%d\n", status);
+		sol[4 * central] = prev_x;
+		sol[4 * central + 2] = prev_y;
+
+		ech = ajuns_la_echilibru();
+	}
+	gsl_odeiv2_driver_free(d);
+}
+
+int func(double t, const double sol[], double f[], void* params)
+{
+	(void)(t);
+	double mu = *(double*)params;
+	int part;
+	double radical;
+
+	int neigh, tip;
+
+	double Fex = 0, Fey = 0, Fe = 0;
+	double own_anch_x, own_anch_y, neigh_anch_x, neigh_anch_y, diff_anch_x, diff_anch_y;
+	for (int i = 0; i < DIM; i++)
+	{
+		update_anch(i);
+		pressure[i] = 0;
+	}
+
+	for (int dot = 0; dot < DIM; dot++)
+	{
+		Fex = 0;
+		Fey = 0;
+		for (int j = 0; j < 6; j++)
+		{
+			neigh = vecin[dot][j].index;
+			if (neigh < 0)
+				continue;
+			tip = vecin[dot][j].type;
+			own_anch_x = anch[dot][tip].x;
+			own_anch_y = anch[dot][tip].y;
+			neigh_anch_x = anch[neigh][7 - tip].x;
+			neigh_anch_y = anch[neigh][7 - tip].y;
+			diff_anch_x = neigh_anch_x - own_anch_x;
+			diff_anch_y = neigh_anch_y - own_anch_y;
+			radical = sqrt(diff_anch_x*diff_anch_x + diff_anch_y * diff_anch_y);
+			Fe = k_elastic * (radical - L);
+			Fex += Fe * diff_anch_x / radical; //acum diferenta pe x are semn! 
+			Fey += Fe * diff_anch_y / radical; //acum diferenta pe y are semn!!
+
+			pressure[dot] += Fe; // NU LUAM IN CALCUL FORTELE DE TORSIUNE
+		}
+
+		part = 4 * dot;
+		f[part] = sol[part + 1];
+		f[part + 1] = Fex - mu * sol[part + 1];
+		f[part + 2] = sol[part + 3];
+		f[part + 3] = Fey - mu * sol[part + 3];
+	}
+	return GSL_SUCCESS;
+}
+
+void tip_vecini() //OKOK
+{
+	int neigh;
+	double x_neigh, y_neigh, x, y;
+	for (int i = 0; i < DIM; i++)
+	{
+		x = sol[4 * i];
+		y = sol[4 * i + 2];
+		for (int j = 0; j < 6; j++)
+		{
+			neigh = vecin[i][j].index;
+			if (neigh < 0)
+			{
+				vecin[i][j].type = -100000;
+				continue;
+			}
+			x_neigh = sol[4 * neigh];
+			y_neigh = sol[4 * neigh + 2];
+
+			if (abs(x_neigh - x) < 0.05 && y_neigh < y)
+			{
+				vecin[i][j].type = 1;
+				continue;
+			}
+			if (x_neigh < x && y_neigh < y)
+			{
+				vecin[i][j].type = 2;
+				continue;
+			}
+			if (x_neigh > x && y_neigh < y)
+			{
+				vecin[i][j].type = 3;
+				continue;
+			}
+			if (x_neigh < x && y_neigh > y)
+			{
+				vecin[i][j].type = 4;
+				continue;
+			}
+			if (x_neigh > x && y_neigh > y)
+			{
+				vecin[i][j].type = 5;
+				continue;
+			}
+			if (abs(x_neigh - x) < 0.05 && y_neigh > y)
+			{
+				vecin[i][j].type = 6;
+				continue;
+			}
+		}
+	}
+}
+
+void update_anch(int dot) //ok, modificat! 
+{
+	double x_centru = sol[4 * dot];
+	double y_centru = sol[4 * dot + 2];
+	//OK
+	anch[dot][1].x = x_centru;
+	anch[dot][1].y = y_centru - r[dot].y;
+	//OK
+	anch[dot][2].x = x_centru - r[dot].x * cosPi6;
+	anch[dot][2].y = y_centru - r[dot].y * sinPi6;
+	//OK
+	anch[dot][3].x = x_centru + r[dot].x * cosPi6;
+	anch[dot][3].y = y_centru - r[dot].y * sinPi6;
+	//OK
+	anch[dot][4].x = x_centru - r[dot].x * cosPi6;
+	anch[dot][4].y = y_centru + r[dot].y * sinPi6;
+	//OK
+	anch[dot][5].x = x_centru + r[dot].x * cosPi6;
+	anch[dot][5].y = y_centru + r[dot].y * sinPi6;
+	//OK
+	anch[dot][6].x = x_centru;
+	anch[dot][6].y = y_centru + r[dot].y;
+}
+
+bool ajuns_la_echilibru()
+{
+	int i;
+	double diffx, diffy;
+	for (i = 0; i < DIM; i++)
+	{
+		diffx = prev_pos[i * 4] - sol[4 * i];
+		diffy = prev_pos[i * 4 + 2] - sol[4 * i + 2];
+		if (abs(diffx) > 1e-4 || abs(diffy) > 1e-4)
+			return 0;
+	}
+	return 1;
+}
+
+int jac(double t, const double y[], double* dfdy, double dfdt[], void* params)
+{
+
+	return GSL_SUCCESS;
+}
